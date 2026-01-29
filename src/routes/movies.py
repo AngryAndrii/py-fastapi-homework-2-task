@@ -10,4 +10,7 @@ from database.models import CountryModel, GenreModel, ActorModel, LanguageModel
 
 router = APIRouter()
 
-# Write your code here
+@router.get("/movies/")
+async def list_movies(db: AsyncSession = Depends(get_db)):
+    # films = await get_films(db)
+    return {"Hello": "it is movies here!"}
