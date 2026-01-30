@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi.encoders import jsonable_encoder
+from pydantic import BaseModel
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -6,7 +8,8 @@ from sqlalchemy.orm import joinedload
 from database import get_db, MovieModel
 from database.models import CountryModel, GenreModel, ActorModel, LanguageModel
 from schemas import MovieDetailSchema
-from schemas.movies import MovieListResponseSchema, MovieListItemSchema
+from schemas.movies import MovieListResponseSchema, MovieListItemSchema, \
+    MovieUpdateSchema
 
 router = APIRouter()
 
@@ -108,3 +111,34 @@ async def delete_movie(
     await db.execute(stmt)
     await db.commit()
 
+
+@router.patch("/movies/{movie_id}/", description="update movie")
+async def update_movie(
+        movie_id: int,
+        data: MovieUpdateSchema,
+        db: AsyncSession = Depends(get_db),
+):
+    movie_to_update = await get_movie_by_id(movie_id, db)
+
+    if not movie_to_update:
+        raise HTTPException(status_code=404,
+                            detail="Movie with the given ID was not found.")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(movie_to_update, field, value)
+
+    try:
+        db.add(movie_to_update)
+        await db.commit()
+        await db.refresh(movie_to_update)
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Invalid input data.")
+
+    return {"detail": "Movie updated successfully."}
+
+@router.post("/movies/", description="create movie")
+async def create_movie(
+        data: Movie
+)

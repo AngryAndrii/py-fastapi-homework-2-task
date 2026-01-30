@@ -1,11 +1,11 @@
 import enum
 from typing import Optional, List
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from datetime import date
 
-from database.models import CountryModel
+from database.models import MovieStatusEnum
 from schemas.actors import ActorSchema
 from schemas.countries import CountrySchema
 from schemas.genres import GenreSchema
@@ -44,3 +44,16 @@ class MovieDetailSchema(MovieBase):
     languages: List[LanguageSchema]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MovieUpdateSchema(BaseModel):
+    name: Optional[str] = Field(None, max_length=255)
+    date: Optional[date] = None | str
+    score: Optional[float] = Field(None, ge=0, le=100)
+    overview: Optional[str] = None
+    status: Optional[MovieStatusEnum] = None
+    budget: Optional[float] = Field(None, ge=0)
+    revenue: Optional[float] = Field(None, ge=0)
+
+
+class MovieCreateSchema(BaseModel):
