@@ -1,15 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
-from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel
-from sqlalchemy import select, func, delete
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from sqlalchemy import select, func, delete
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload, selectinload
+
+from crud import get_or_create_entities
 from database import get_db, MovieModel
 from database.models import CountryModel, GenreModel, ActorModel, LanguageModel
 from schemas import MovieDetailSchema
 from schemas.movies import MovieListResponseSchema, MovieListItemSchema, \
-    MovieUpdateSchema
+    MovieUpdateSchema, MovieCreateSchema
 
 router = APIRouter()
 
@@ -138,7 +140,78 @@ async def update_movie(
 
     return {"detail": "Movie updated successfully."}
 
-@router.post("/movies/", description="create movie")
-async def create_movie(
-        data: Movie
+
+@router.post(
+    "/movies/",
+    response_model=MovieDetailSchema,
+    status_code=201
 )
+async def create_movie(
+        db: Annotated[AsyncSession, Depends(get_db)],
+        movie_data: MovieCreateSchema
+):
+    existing_movie = await db.execute(
+        select(MovieModel).where(
+            MovieModel.name == movie_data.name,
+            MovieModel.date == movie_data.date
+        )
+    )
+    if existing_movie.scalars().first():
+        raise HTTPException(
+            status_code=409,
+            detail=f"A movie with the name '{movie_data.name}' "
+                   f"and release date '{movie_data.date}' already exists."
+        )
+
+    country_query = await db.execute(
+        select(CountryModel).where(CountryModel.code == movie_data.country)
+    )
+    db_country = country_query.scalar_one_or_none()
+
+    if not db_country:
+        db_country = CountryModel(code=movie_data.country, name=None)
+        db.add(db_country)
+
+    db_genres = await get_or_create_entities(
+        db, GenreModel, movie_data.genres
+    )
+    db_actors = await get_or_create_entities(
+        db, ActorModel, movie_data.actors
+    )
+    db_languages = await get_or_create_entities(
+        db, LanguageModel, movie_data.languages
+    )
+
+    movie_fields = movie_data.model_dump(
+        exclude={"country", "genres", "actors", "languages"}
+    )
+
+    db_movie = MovieModel(
+        **movie_fields,
+        country=db_country,
+        genres=db_genres,
+        actors=db_actors,
+        languages=db_languages
+    )
+
+    db.add(db_movie)
+
+    try:
+        await db.commit()
+        query = (
+            select(MovieModel)
+            .where(MovieModel.id == db_movie.id)
+            .options(
+                joinedload(MovieModel.country),
+                selectinload(MovieModel.genres),
+                selectinload(MovieModel.actors),
+                selectinload(MovieModel.languages)
+            )
+        )
+        result = await db.execute(query)
+        db_movie = result.scalar_one()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Invalid input data.")
+
+    return db_movie

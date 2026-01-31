@@ -1,9 +1,9 @@
 import enum
 from typing import Optional, List
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from datetime import date
+from datetime import date, timedelta
 
 from database.models import MovieStatusEnum
 from schemas.actors import ActorSchema
@@ -57,3 +57,23 @@ class MovieUpdateSchema(BaseModel):
 
 
 class MovieCreateSchema(BaseModel):
+    name: str = Field(..., max_length=255)
+    date: date
+    score: float = Field(..., ge=0, le=100)
+    overview: str
+    status: MovieStatusEnum
+    budget: float = Field(..., ge=0)
+    revenue: float = Field(..., ge=0)
+    country: str
+    genres: List[str]
+    actors: List[str]
+    languages: List[str]
+
+    @field_validator('date')
+    @classmethod
+    def date_not_too_far_in_future(cls, value):
+        one_year_from_now = date.today() + timedelta(
+            days=365)
+        if value > one_year_from_now:
+            raise ValueError('Date cannot be more than one year in the future')
+        return value
