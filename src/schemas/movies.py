@@ -34,7 +34,7 @@ class MovieListResponseSchema(BaseModel):
 
 
 class MovieDetailSchema(MovieBase):
-    status: enum.Enum
+    status: MovieStatusEnum
     budget: float
     revenue: float
     country_id: int
